@@ -1,6 +1,7 @@
 # Runtime data (real)
-people.json
-events.jsonl
+online_content_metrics.db
+online_content_metrics.db-shm
+online_content_metrics.db-wal
 
 # OS / editor noise
 .DS_Store
