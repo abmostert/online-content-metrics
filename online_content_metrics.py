@@ -140,6 +140,55 @@ def prompt_nonnegative_int(label: str) -> int:
 
         return number
 
+def prompt_edit_text(
+    label: str,
+    current: Optional[str],
+    allow_clear: bool = False,
+    clear_value=None,
+):
+    display = current if current not in (None, "") else "(blank)"
+
+    value = input(f"{label} [{display}]: ").strip()
+
+    if value == "":
+        return current
+
+    if allow_clear and value == "-":
+        return clear_value
+
+    return value
+
+
+def prompt_edit_date(label: str, current: str) -> str:
+    value = input(f"{label} [{current}]: ").strip()
+
+    if value == "":
+        return current
+
+    return valid_date(value)
+
+
+def prompt_edit_nonnegative_int(
+    label: str,
+    current: int,
+) -> int:
+    while True:
+        value = input(f"{label} [{current}]: ").strip()
+
+        if value == "":
+            return current
+
+        try:
+            number = int(value)
+        except ValueError:
+            print("Please enter a whole number.")
+            continue
+
+        if number < 0:
+            print("Please enter 0 or a positive number.")
+            continue
+
+        return number
 
 # ---------------------------------------------------------------------------
 # Selection helpers
@@ -237,6 +286,57 @@ def select_post(
 
         print("Post ID not found.")
 
+
+def select_measurement(
+    conn: sqlite3.Connection,
+    post_id: int,
+) -> sqlite3.Row:
+
+    measurements = conn.execute(
+        """
+        SELECT
+            id,
+            measurement_date,
+            total_comments,
+            positive_comments,
+            negative_comments
+        FROM measurements
+        WHERE post_id = ?
+        ORDER BY measurement_date DESC
+        """,
+        (post_id,),
+    ).fetchall()
+
+    if not measurements:
+        die("No measurements exist for that post.")
+
+    print()
+    print("Measurements:")
+    print()
+
+    for measurement in measurements:
+        print(
+            f"{measurement['id']}. "
+            f"{measurement['measurement_date']} "
+            f"- {measurement['total_comments']} comments"
+        )
+
+    print()
+
+    while True:
+        value = input("Measurement ID: ").strip()
+
+        try:
+            measurement_id = int(value)
+        except ValueError:
+            print("Please enter a measurement ID.")
+            continue
+
+        for measurement in measurements:
+            if measurement["id"] == measurement_id:
+                return measurement
+
+        print("Measurement ID not found.")
 
 # ---------------------------------------------------------------------------
 # Commands
@@ -589,6 +689,250 @@ def cmd_show_post(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
+def cmd_edit_website(args: argparse.Namespace) -> None:
+    conn = connect_db(args.db)
+
+    try:
+        initialise_database(conn)
+
+        selected = select_website(conn)
+
+        website = conn.execute(
+            """
+            SELECT *
+            FROM websites
+            WHERE id = ?
+            """,
+            (selected["id"],),
+        ).fetchone()
+
+        print()
+        print("Press Enter to keep the current value.")
+        print("For URL or notes, enter - to clear the field.")
+        print()
+
+        name = prompt_edit_text(
+            "Website/platform name",
+            website["name"],
+        )
+
+        url = prompt_edit_text(
+            "Website URL",
+            website["url"],
+            allow_clear=True,
+            clear_value=None,
+        )
+
+        notes = prompt_edit_text(
+            "Notes",
+            website["notes"],
+            allow_clear=True,
+            clear_value="",
+        )
+
+        if not name:
+            die("Website/platform name cannot be empty.")
+
+        conn.execute(
+            """
+            UPDATE websites
+            SET
+                name = ?,
+                url = ?,
+                notes = ?
+            WHERE id = ?
+            """,
+            (
+                name,
+                url,
+                notes,
+                website["id"],
+            ),
+        )
+
+        conn.commit()
+
+        print()
+        print(f"Website updated: {name}")
+
+    finally:
+        conn.close()
+
+def cmd_edit_post(args: argparse.Namespace) -> None:
+    conn = connect_db(args.db)
+
+    try:
+        initialise_database(conn)
+
+        website = select_website(conn)
+        selected = select_post(conn, website["id"])
+
+        post = conn.execute(
+            """
+            SELECT *
+            FROM posts
+            WHERE id = ?
+            """,
+            (selected["id"],),
+        ).fetchone()
+
+        print()
+        print("Press Enter to keep the current value.")
+        print("For URL or notes, enter - to clear the field.")
+        print()
+
+        title = prompt_edit_text(
+            "Post title",
+            post["title"],
+        )
+
+        url = prompt_edit_text(
+            "Post URL",
+            post["url"],
+            allow_clear=True,
+            clear_value=None,
+        )
+
+        published_date = prompt_edit_date(
+            "Publication date",
+            post["published_date"],
+        )
+
+        notes = prompt_edit_text(
+            "Notes",
+            post["notes"],
+            allow_clear=True,
+            clear_value="",
+        )
+
+        if not title:
+            die("Post title cannot be empty.")
+
+        conn.execute(
+            """
+            UPDATE posts
+            SET
+                title = ?,
+                url = ?,
+                published_date = ?,
+                notes = ?
+            WHERE id = ?
+            """,
+            (
+                title,
+                url,
+                published_date,
+                notes,
+                post["id"],
+            ),
+        )
+
+        conn.commit()
+
+        print()
+        print(f"Post updated: {title}")
+
+    finally:
+        conn.close()
+
+def cmd_edit_measurement(args: argparse.Namespace) -> None:
+    conn = connect_db(args.db)
+
+    try:
+        initialise_database(conn)
+
+        website = select_website(conn)
+        post = select_post(conn, website["id"])
+        selected = select_measurement(conn, post["id"])
+
+        measurement = conn.execute(
+            """
+            SELECT *
+            FROM measurements
+            WHERE id = ?
+            """,
+            (selected["id"],),
+        ).fetchone()
+
+        print()
+        print("Press Enter to keep the current value.")
+        print("For notes, enter - to clear the field.")
+        print()
+
+        measurement_date = prompt_edit_date(
+            "Measurement date",
+            measurement["measurement_date"],
+        )
+
+        total = prompt_edit_nonnegative_int(
+            "Total comments",
+            measurement["total_comments"],
+        )
+
+        positive = prompt_edit_nonnegative_int(
+            "Estimated positive comments",
+            measurement["positive_comments"],
+        )
+
+        negative = prompt_edit_nonnegative_int(
+            "Estimated negative comments",
+            measurement["negative_comments"],
+        )
+
+        if positive + negative > total:
+            die(
+                "Positive comments plus negative comments "
+                "cannot exceed total comments."
+            )
+
+        notes = prompt_edit_text(
+            "Notes",
+            measurement["notes"],
+            allow_clear=True,
+            clear_value="",
+        )
+
+        try:
+            conn.execute(
+                """
+                UPDATE measurements
+                SET
+                    measurement_date = ?,
+                    total_comments = ?,
+                    positive_comments = ?,
+                    negative_comments = ?,
+                    notes = ?
+                WHERE id = ?
+                """,
+                (
+                    measurement_date,
+                    total,
+                    positive,
+                    negative,
+                    notes,
+                    measurement["id"],
+                ),
+            )
+
+            conn.commit()
+
+        except sqlite3.IntegrityError as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                die(
+                    "Another measurement already exists "
+                    "for this post on that date."
+                )
+
+            raise
+
+        print()
+        print(
+            f"Measurement updated: "
+            f"{measurement_date}"
+        )
+
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -652,6 +996,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show a post and its measurements.",
     )
     show_post_parser.set_defaults(func=cmd_show_post)
+
+    edit_website_parser = sub.add_parser(
+        "edit-website",
+        help="Edit an existing website or platform.",
+    )
+    edit_website_parser.set_defaults(func=cmd_edit_website)
+
+    edit_post_parser = sub.add_parser(
+        "edit-post",
+        help="Edit an existing post.",
+    )
+    edit_post_parser.set_defaults(func=cmd_edit_post)
+
+    edit_measurement_parser = sub.add_parser(
+        "edit-measurement",
+        help="Edit an existing measurement.",
+    )
+    edit_measurement_parser.set_defaults(
+        func=cmd_edit_measurement
+    )
 
     return parser
 
