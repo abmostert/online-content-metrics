@@ -1,338 +1,278 @@
-# Network Metrics (v2 – Tier-Aware, Workflow-Aligned)
+# Online Content Metrics
 
-A minimal, append-only networking metrics logger and reporter aligned to **Networking Workflow v4.5**.
+A simple local-first Python CLI for tracking the performance of published online content over time.
 
-This tool is designed to:
+The program is designed to answer questions such as:
 
-- Track outbound networking activity
-- Segment performance by Tier (A/B/C)
-- Enforce give–give–ask discipline
-- Produce stable, cohort-safe KPIs
-- Avoid spreadsheet sprawl
-- Minimise friction
+* Which websites or platforms generate the most engagement?
+* Which individual posts perform best?
+* How does engagement change over time after publication?
+* What proportion of comments are broadly positive, negative, or neutral?
+* What observations or patterns are associated with particular posts?
 
-No external dependencies. Standard library only.
+The project intentionally starts with a small, simple data model and can be extended with additional metrics later.
 
----
+## Data structure
 
-# Design Philosophy
+The database has three levels:
 
-This tool is not a CRM.
-
-It is a **behaviour tracking instrument**.
-
-Primary objective:
-
-> Improve signal acquisition for entering VC.
-
-Secondary objectives:
-
-- Reduce escalation anxiety
-- Monitor tier allocation
-- Detect funnel bottlenecks
-- Maintain mechanical discipline
-
-The script is:
-
-- Append-only (events.jsonl)
-- Human-readable
-- Git-friendly
-- Backwards compatible
-
----
-
-# Data Model
-
-## people.json
-
-```json
-{
-  "person_id": {
-    "name": "Full Name",
-    "notes": "Optional notes",
-    "created_at": "2026-01-15T09:30:00Z",
-    "tier": "A"
-  }
-}
+```text
+Website / platform
+    └── Post
+          └── Measurement
 ```
 
-## Tier Definitions
+For example:
 
-- A — Associates / peers / operators
-- B — Principals / senior associates
-- C — Partners / very senior
-- U — Unknown (auto-assigned if tier missing)
-
-Tier is optional. Missing tiers are bucketed as U automatically.
-
-## events.jsonl
-
-Append-only JSON lines file.
-Each line:
-```json
-{
-  "ts": "2026-01-16T10:05:00Z",
-  "person_id": "jdoe",
-  "event": "legibility_sent",
-  "meta": {}
-}
+```text
+Reddit - r/Entrepreneur
+│
+└── Example post
+    Published: 2026-09-15
+    │
+    ├── Measurement: 2026-09-15
+    │   ├── Total comments: 20
+    │   ├── Positive comments: 12
+    │   ├── Negative comments: 3
+    │   └── Notes: ...
+    │
+    └── Measurement: 2026-09-22
+        ├── Total comments: 45
+        ├── Positive comments: 30
+        ├── Negative comments: 5
+        └── Notes: ...
 ```
 
----
+## Storage
 
-# Supported Events (Workflow v4.5 Aligned)
+The program uses SQLite.
 
-## Core Funnel Events
+The default database file is:
 
-- ```connection_accepted```
-- ```legibility_sent```
-- ```value_ping_sent``` ← proactive give
-- ```public_comment``` ← proactive give
-- ```question_sent```
-- ```reprompt_sent```
-- ```reply_received```
-- ```call_ask_sent```
-- ```call_agreed```
-- ```call_scheduled```
-- ```call_completed```
-- ```bow_out_sent```
-- ```closed_dormant```
-
----
-
-# Contribution Model (Give–Give–Ask)
-
-Two contribution types:
-
-## Proactive Give
-
-- ```value_ping_sent```
-- ```public_comment```
-
-## Conversational Give
-
-Not explicitly logged — inferred from engagement discipline.
-
-Call asks should follow:
-- ≥1 proactive give
-- ≥1 meaningful conversational give
-
----
-
-# Installation
-
-No installation required.
-
-Place the script in your project folder:
-```
-network_metrics.py
-people.json
-events.jsonl
+```text
+online_content_metrics.db
 ```
 
-Run with:
-```
-python network_metrics.py <command>
-```
+The database is stored locally and is excluded from Git by `.gitignore`.
 
----
+The repository therefore contains the program code, but not the user's real content-performance data.
 
-# CLI Commands
+## Requirements
 
-## Add person
-```Bash
-python network_metrics.py add-person \
-  --id advikaj \
-  --name "Advika Jalan" \
-  --tier A
-```
-Tier is optional.
+* Python 3
+* SQLite support included with Python
 
-## Set Tier (Recommended)
-Assign tier as you touch people:
-```Bash
-python network_metrics.py set-tier \
-  --id advikaj \
-  --tier B
+No external Python packages are currently required.
+
+## Basic usage
+
+Initialise the database:
+
+```bash
+python3 online_content_metrics.py init
 ```
 
-## Log event
+### Websites
 
-```Bash
-python network_metrics.py log \
-  --id advikaj \
-  --event legibility_sent
+Add a website or platform:
+
+```bash
+python3 online_content_metrics.py add-website
 ```
 
-With meta:
-```Bash
-python network_metrics.py log \
-  --id advikaj \
-  --event question_sent \
-  --meta '{"q":"Q3"}'
+List websites:
+
+```bash
+python3 online_content_metrics.py list-websites
 ```
 
-## Generate Metrics
+Edit an existing website:
 
-```Bash
-python network_metrics.py metrics
-```
-With date window:
-```Bash
-python network_metrics.py metrics \
-  --since 2026-01-26 \
-  --until 2026-02-23
-```
-Dates are inclusive.
-
----
-
-# Output Structure
-
-The report includes:
-
-## Overall
-
-- Raw counts
-- Cohort-safe ratios
-- Headline KPI band
-
-## Per Tier (A/B/C/U)
-
-- Counts
-- Ratios
-
-This prevents Tier B/C from distorting Tier A performance.
-
----
-
-# KPIs (Cohort-Safe)
-
-The script avoids unstable denominators such as "accepted".
-Key ratios include:
-
-## Engagement Quality
-
-- ```reply_rate_legibility```
-- ```reply_rate_value_ping```
-- ```reply_rate_questions```
-
-## Call Funnel Health
-
-- ```call_yes_rate```
-- ```schedule_rate_from_yes```
-- ```completion_rate```
-
-## Stable Success Indicators
-
-- ```calls_completed_per_legibility```
-- ```calls_completed_per_call_ask```
-
-## Give Intensity
-
-- ```proactive_gives_per_legibility```
-
----
-
-# Headline Band
-
-Primary headline metric:
-```
-calls_completed_per_legibility
+```bash
+python3 online_content_metrics.py edit-website
 ```
 
-Interpretation bands:
+A website can represent a platform or a specific publishing location, for example:
 
-- <5% — Early / conservative call volume
-- 5–8% — Working; improveable
-- 8–12% — Target band
-- 12% — Strong; scale volume
-
----
-
-# Workflow Alignment
-
-This metrics tool assumes:
-- 5 working days after legibility
-- 5 working days after value ping
-- 10 working days after question
-- 5 working days after reprompt
-- One reprompt maximum
-- Tier B shallow depth
-- Tier C legibility-only unless engaged
-The tool does not enforce the workflow — it reflects it.
-
----
-
-# Backwards Compatibility
-
-You do NOT need to restart data.
-- Missing tier → bucketed as "U"
-- Old events remain valid
-- New events simply extend the model
-No migration required.
-
----
-
-# Recommended Operating Practice
-
-1. Assign tier only when person becomes active.
-2. Log events immediately after they occur.
-3. Review metrics weekly.
-4. Log friction separately.
-5. Avoid redesign during active cycles.
-
----
-
-# Non-Goals
-
-This tool is NOT:
-- A CRM
-- A relationship database
-- A pipeline forecasting tool
-- A lead scoring engine
-It is a behaviour instrumentation layer.
-
----
-
-# Future Extensions (Optional)
-
-- Tier coverage percentage
-- Automatic give compliance check
-- Per-person funnel state summary
-- CSV export
-- Streak tracking
-- Weekly delta reports
-
----
-
-# Example Minimal Workflow
-
-```Bash
-python network_metrics.py add-person --id jdoe --name "Jane Doe" --tier A
-python network_metrics.py log --id jdoe --event connection_accepted
-python network_metrics.py log --id jdoe --event legibility_sent
-python network_metrics.py log --id jdoe --event value_ping_sent
-python network_metrics.py log --id jdoe --event question_sent
-python network_metrics.py log --id jdoe --event reply_received
-python network_metrics.py log --id jdoe --event call_ask_sent
-python network_metrics.py log --id jdoe --event call_agreed
-python network_metrics.py log --id jdoe --event call_completed
-python network_metrics.py metrics
+```text
+Medium
+X
+LinkedIn
+Reddit - r/Entrepreneur
+Reddit - r/smallbusiness
 ```
 
----
+### Posts
 
-# Core Principle
+Add a published post:
 
-Track behaviour.
-Segment by tier.
-Optimise signal acquisition.
-Avoid emotional interpretation.
-Iterate slowly.
+```bash
+python3 online_content_metrics.py add-post
+```
 
----
+List posts:
 
-# License
+```bash
+python3 online_content_metrics.py list-posts
+```
 
-MIT
+Edit an existing post:
+
+```bash
+python3 online_content_metrics.py edit-post
+```
+
+Each post is associated with a website and includes:
+
+* title
+* publication date
+* optional URL
+* optional notes
+
+### Measurements
+
+Add a measurement:
+
+```bash
+python3 online_content_metrics.py add-measurement
+```
+
+Show a post and its measurement history:
+
+```bash
+python3 online_content_metrics.py show-post
+```
+
+Edit an existing measurement:
+
+```bash
+python3 online_content_metrics.py edit-measurement
+```
+
+Each measurement records:
+
+* measurement date
+* total number of comments
+* estimated number of positive comments
+* estimated number of negative comments
+* optional notes
+
+Comments that are neither classified as positive nor negative are treated as other/neutral:
+
+```text
+other = total comments - positive comments - negative comments
+```
+
+The program also calculates positive and negative comment percentages when displaying a post.
+
+## Example workflow
+
+Add a website:
+
+```bash
+python3 online_content_metrics.py add-website
+```
+
+Add a post under that website:
+
+```bash
+python3 online_content_metrics.py add-post
+```
+
+Add the first measurement:
+
+```bash
+python3 online_content_metrics.py add-measurement
+```
+
+A few days later, add another measurement for the same post:
+
+```bash
+python3 online_content_metrics.py add-measurement
+```
+
+View the measurement history:
+
+```bash
+python3 online_content_metrics.py show-post
+```
+
+## Database safeguards
+
+The program currently enforces several basic rules:
+
+* comment counts cannot be negative
+* positive comments plus negative comments cannot exceed total comments
+* posts must belong to an existing website
+* measurements must belong to an existing post
+* only one measurement can exist for a particular post on a particular date
+* deleting related database records is restricted by foreign-key relationships
+
+## Current commands
+
+```text
+init
+
+add-website
+list-websites
+edit-website
+
+add-post
+list-posts
+edit-post
+
+add-measurement
+show-post
+edit-measurement
+```
+
+View the full CLI help with:
+
+```bash
+python3 online_content_metrics.py --help
+```
+
+## Current status
+
+The core data-management layer is implemented.
+
+The program can currently:
+
+* create the SQLite database
+* add, list, and edit websites
+* add, list, and edit posts
+* add and edit repeated dated measurements
+* display measurement history for an individual post
+* calculate basic positive, negative, and neutral comment proportions
+
+## Planned development
+
+The next development stage is analytics.
+
+Planned features include:
+
+* overall content metrics
+* comment growth over time
+* comments gained between measurements
+* comments per day
+* post age
+* comparison between posts
+* comparison between websites or platforms
+* performance at comparable post ages
+* graphs of engagement over time
+
+The aim is to move from simple data collection toward understanding which content performs best, where it performs best, and how performance develops after publication.
+
+## Project philosophy
+
+The project is intended to remain:
+
+* local-first
+* simple
+* transparent
+* easy to back up
+* easy to modify
+* independent of external services
+
+The emphasis is on collecting useful observations consistently first, then building analysis on top of reliable data.
+
