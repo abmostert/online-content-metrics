@@ -934,6 +934,146 @@ def cmd_edit_measurement(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
+
+def cmd_metrics(args: argparse.Namespace) -> None:
+    conn = connect_db(args.db)
+
+    try:
+        initialise_database(conn)
+
+        website_count = conn.execute(
+            "SELECT COUNT(*) FROM websites"
+        ).fetchone()[0]
+
+        post_count = conn.execute(
+            "SELECT COUNT(*) FROM posts"
+        ).fetchone()[0]
+
+        measurement_count = conn.execute(
+            "SELECT COUNT(*) FROM measurements"
+        ).fetchone()[0]
+
+        measured_post_count = conn.execute(
+            """
+            SELECT COUNT(DISTINCT post_id)
+            FROM measurements
+            """
+        ).fetchone()[0]
+
+        print()
+        print("ONLINE CONTENT METRICS")
+        print("======================")
+        print()
+        print(f"Websites/platforms: {website_count}")
+        print(f"Posts:              {post_count}")
+        print(f"Measured posts:     {measured_post_count}")
+        print(f"Measurements:       {measurement_count}")
+
+        if post_count == 0:
+            print()
+            print("No posts found.")
+            return
+
+        posts = conn.execute(
+            """
+            SELECT
+                posts.id,
+                posts.title,
+                posts.published_date,
+                websites.name AS website_name
+            FROM posts
+            JOIN websites
+                ON websites.id = posts.website_id
+            ORDER BY posts.published_date DESC, posts.id DESC
+            """
+        ).fetchall()
+
+        print()
+        print("POST PERFORMANCE")
+        print("================")
+
+        for post in posts:
+            measurements = conn.execute(
+                """
+                SELECT *
+                FROM measurements
+                WHERE post_id = ?
+                ORDER BY measurement_date
+                """,
+                (post["id"],),
+            ).fetchall()
+
+            print()
+            print(f"{post['title']}")
+            print(f"  Website:    {post['website_name']}")
+            print(f"  Published:  {post['published_date']}")
+
+            if not measurements:
+                print("  Measurements: none")
+                continue
+
+            first = measurements[0]
+            latest = measurements[-1]
+
+            total = latest["total_comments"]
+            positive = latest["positive_comments"]
+            negative = latest["negative_comments"]
+            neutral = total - positive - negative
+
+            if total > 0:
+                positive_pct = 100 * positive / total
+                negative_pct = 100 * negative / total
+                neutral_pct = 100 * neutral / total
+            else:
+                positive_pct = 0.0
+                negative_pct = 0.0
+                neutral_pct = 0.0
+
+            print(
+                f"  Latest:     {latest['measurement_date']}"
+            )
+            print(f"  Comments:   {total}")
+            print(
+                f"  Sentiment:  "
+                f"{positive_pct:.1f}% positive | "
+                f"{negative_pct:.1f}% negative | "
+                f"{neutral_pct:.1f}% other"
+            )
+
+            if len(measurements) > 1:
+                comment_growth = (
+                    latest["total_comments"]
+                    - first["total_comments"]
+                )
+
+                first_date = date.fromisoformat(
+                    first["measurement_date"]
+                )
+                latest_date = date.fromisoformat(
+                    latest["measurement_date"]
+                )
+
+                days = (latest_date - first_date).days
+
+                print(
+                    f"  Growth:     {comment_growth:+d} comments "
+                    f"since first measurement"
+                )
+
+                if days > 0:
+                    comments_per_day = comment_growth / days
+                    print(
+                        f"  Growth rate: "
+                        f"{comments_per_day:.1f} comments/day"
+                    )
+
+            print(
+                f"  Measurements: {len(measurements)}"
+            )
+
+    finally:
+        conn.close()
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -1017,6 +1157,12 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_edit_measurement
     )
 
+    metrics_parser = sub.add_parser(
+    "metrics",
+    help="Show basic content performance metrics.",
+    )
+    metrics_parser.set_defaults(func=cmd_metrics)
+    
     return parser
 
 
